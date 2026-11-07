@@ -1,0 +1,22 @@
+{
+  "name": "version-extractor",
+  "version": "2.0.0",
+  "description": "Extract latest + previous product versions from changelog pages, with OpenAI web-search fallback and a DB job queue (SQLite or MySQL). Hostinger-ready.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "worker:once": "node worker.js --once",
+    "migrate": "node -e \"require('./src/db').migrate().then(()=>{console.log('DB ready',require('./src/db').info());process.exit(0)})\"",
+    "sqlite-to-mysql": "node migrate-sqlite-to-mysql.js"
+  },
+  "engines": { "node": ">=22.13" },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "csv-parse": "^5.5.6",
+    "csv-stringify": "^6.5.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "multer": "^2.0.2",
+    "mysql2": "^3.11.5"
+  }
+}

@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Version Extractor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234355b9'/%3E%3Cpath fill='white' d='M7 7h2.2l2.8 7.4L14.8 7H17l-4 10h-2z'/%3E%3C/svg%3E">
+<script>
+  // apply theme before first paint (no flash)
+  (function () {
+    var t = localStorage.getItem('ve-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- ===================== LOGIN (in-page, no browser popup) ===================== -->
+<div id="loginView" class="login-view" hidden>
+  <div class="login-bg"></div>
+  <form id="loginForm" class="login-card" autocomplete="on" novalidate>
+    <div class="brand-mark lg" aria-hidden="true">V</div>
+    <h1 class="headline">Welcome back</h1>
+    <p class="body-m muted">Sign in to Version Extractor</p>
+    <div class="field">
+      <input id="lgUser" name="username" autocomplete="username" placeholder=" " required>
+      <label for="lgUser">Username</label>
+    </div>
+    <div class="field has-trailing">
+      <input id="lgPass" name="password" type="password" autocomplete="current-password" placeholder=" " required>
+      <label for="lgPass">Password</label>
+      <button type="button" class="icon-btn trailing" id="lgShow" aria-label="Show password" data-icon="visibility"></button>
+    </div>
+    <label class="check-row"><input type="checkbox" name="remember" checked> Keep me signed in for 30 days</label>
+    <div id="lgError" class="error-text" role="alert"></div>
+    <button class="btn filled block" type="submit" id="lgBtn"><span data-icon="lock"></span>Sign in</button>
+  </form>
+</div>
+
+<!-- ===================== APP SHELL ===================== -->
+<div id="app" hidden>
+  <header class="top-app-bar" id="topBar">
+    <button class="icon-btn only-desktop" id="sideToggle" aria-label="Hide sidebar" aria-controls="drawer" aria-expanded="true" title="Hide sidebar (Ctrl+B)" data-icon="menu_open"></button>
+    <button class="icon-btn only-mobile" id="menuBtn" aria-label="Open navigation" aria-controls="drawer" aria-expanded="false" data-icon="menu"></button>
+    <div class="brand"><div class="brand-mark" aria-hidden="true">V</div><span class="title-l">Version Extractor</span></div>
+    <div class="spacer"></div>
+    <span class="chip-db" id="dbChip" title="Active database"></span>
+    <button class="icon-btn" id="themeBtn" aria-label="Toggle dark mode" title="Toggle light / dark"></button>
+    <button class="icon-btn" id="logoutBtn" aria-label="Sign out" title="Sign out" data-icon="logout"></button>
+    <div class="progress" id="progress" aria-hidden="true"><span></span></div>
+  </header>
+
+  <div class="scrim" id="scrim"></div>
+  <nav class="drawer" id="drawer" aria-label="Main">
+    <div class="drawer-head only-mobile">
+      <div class="brand"><div class="brand-mark" aria-hidden="true">V</div><span class="title-l">Version Extractor</span></div>
+      <button class="icon-btn" id="drawerClose" aria-label="Close navigation" data-icon="close"></button>
+    </div>
+    <a class="nav-item" href="#/products" data-view="products"><span data-icon="inventory"></span>Products<span class="nav-badge" id="navCount"></span></a>
+    <a class="nav-item" href="#/import" data-view="import"><span data-icon="upload"></span>Import</a>
+    <a class="nav-item" href="#/sitemap" data-view="sitemap"><span data-icon="sitemap"></span>Sitemap<span class="nav-badge" id="navSitemap"></span></a>
+    <a class="nav-item" href="#/jobs" data-view="jobs"><span data-icon="schedule"></span>Jobs &amp; Queue<span class="nav-badge accent" id="navQueue"></span></a>
+    <a class="nav-item" href="#/settings" data-view="settings"><span data-icon="settings"></span>Settings</a>
+    <div class="drawer-foot">
+      <div class="label-m muted">Signed in as</div>
+      <div class="title-s" id="whoami">—</div>
+    </div>
+  </nav>
+
+  <main class="content" id="content">
+
+    <!-- ============ PRODUCTS ============ -->
+    <section class="view" data-view="products">
+      <div class="page-head">
+        <div><h1 class="headline">Products</h1><p class="muted body-m">Latest and previous versions, extracted from changelogs or AI.</p></div>
+        <div class="head-actions">
+          <button class="btn tonal" id="btnExportToday"><span data-icon="today"></span>Export updated today <span class="count-badge" id="todayBadge"></span></button>
+          <button class="btn filled" id="btnAdd"><span data-icon="add"></span>Add product</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="statGrid"></div>
+
+      <div class="surface card filters">
+        <div class="field search">
+          <span data-icon="search" class="leading"></span>
+          <input id="q" type="search" placeholder=" " autocomplete="off">
+          <label for="q">Search name, SKU, ID, version…</label>
+        </div>
+        <div class="field select">
+          <select id="fStatus"><option value="">All</option><option value="new">New</option><option value="queued">Queued</option><option value="processing">Processing</option><option value="found">Found</option><option value="not_found">Not found</option><option value="error">Error</option></select>
+          <label for="fStatus">Status</label>
+        </div>
+        <div class="field select">
+          <select id="fSource"><option value="">All</option><option value="changelog">Changelog</option><option value="ai">AI</option><option value="manual">Manual</option></select>
+          <label for="fSource">Source</label>
+        </div>
+        <div class="field select">
+          <select id="fChanged"><option value="">Any time</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="custom">Custom range…</option></select>
+          <label for="fChanged">Version updated</label>
+        </div>
+        <div class="field select">
+          <select id="fPrev"><option value="">Any</option><option value="1">Has previous version</option><option value="0">No previous version</option></select>
+          <label for="fPrev">Previous version</label>
+        </div>
+        <div class="date-range" id="dateRange" hidden>
+          <div class="field"><input type="date" id="fFrom" placeholder=" "><label for="fFrom">From</label></div>
+          <div class="field"><input type="date" id="fTo" placeholder=" "><label for="fTo">To</label></div>
+          <button type="button" class="btn text" id="fRangeClear"><span data-icon="close"></span>Clear filters</button>
+        </div>
+      </div>
+
+      <div class="action-bar surface card">
+        <div class="sel-group">
+          <button class="btn tonal" id="btnSelectAll" title="Select every product across all pages"><span data-icon="done_all"></span>Select all <span id="selAllCount"></span></button>
+          <button class="btn text" id="btnClearSel" hidden><span data-icon="close"></span>Clear</button>
+          <span class="sel-text" id="selText" aria-live="polite"></span>
+        </div>
+        <div class="act-group">
+          <div class="menu-wrap">
+            <button class="btn filled-tonal-primary" id="btnExtractMenu" aria-haspopup="menu"><span data-icon="play"></span>Extract<span data-icon="expand" class="caret"></span></button>
+            <div class="menu" id="extractMenu" role="menu" hidden>
+              <button role="menuitem" data-extract="auto"><span data-icon="play"></span><div><b>By settings</b><small>Changelog → AI for the rest</small></div></button>
+              <button role="menuitem" data-extract="changelog"><span data-icon="article"></span><div><b>Changelog only</b><small>Parse changelog pages</small></div></button>
+              <button role="menuitem" data-extract="ai_version"><span data-icon="sparkle"></span><div><b>AI version search</b><small>OpenAI web search</small></div></button>
+              <button role="menuitem" data-extract="ai_changelog"><span data-icon="link"></span><div><b>AI: find changelog URL</b><small>Discover changelog pages</small></div></button>
+            </div>
+          </div>
+          <button class="btn outlined" id="btnExportSel"><span data-icon="download"></span>Export selected</button>
+          <button class="btn outlined" id="btnExportAll"><span data-icon="download"></span>Export all</button>
+          <button class="btn danger-tonal" id="btnDelSel"><span data-icon="delete"></span>Delete selected</button>
+          <button class="btn danger-text" id="btnDelAll"><span data-icon="delete_forever"></span>Delete all</button>
+        </div>
+      </div>
+
+      <div class="surface card table-card">
+        <table class="data-table" id="tbl">
+          <thead><tr>
+            <th class="col-check"><input type="checkbox" id="chkPage" aria-label="Select all on this page"></th>
+            <th data-sort="id">#</th>
+            <th data-sort="product_id">Product ID</th>
+            <th data-sort="sku">SKU</th>
+            <th data-sort="name">Name</th>
+            <th>Changelog</th>
+            <th data-sort="version">Version</th>
+            <th data-sort="previous_version">Previous</th>
+            <th data-sort="version_changed_at">Updated</th>
+            <th>Source</th>
+            <th data-sort="status">Status</th>
+            <th data-sort="checked_at">Checked</th>
+            <th class="col-actions">Actions</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="pager">
+          <div class="field select compact">
+            <select id="limit"><option>10</option><option selected>25</option><option>50</option><option>100</option><option>250</option></select>
+            <label for="limit">Rows</label>
+          </div>
+          <span class="body-m muted" id="pageInfo"></span>
+          <div class="pager-btns">
+            <button class="icon-btn" id="first" aria-label="First page" data-icon="first"></button>
+            <button class="icon-btn" id="prev" aria-label="Previous page" data-icon="chevron_left"></button>
+            <button class="icon-btn" id="next" aria-label="Next page" data-icon="chevron_right"></button>
+            <button class="icon-btn" id="last" aria-label="Last page" data-icon="last"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ IMPORT ============ -->
+    <section class="view" data-view="import">
+      <div class="page-head">
+        <div><h1 class="headline">Import products</h1><p class="muted body-m">Upload a CSV. Duplicates are removed with Regex or AI before saving.</p></div>
+        <a class="btn outlined" href="/api/template.csv"><span data-icon="download"></span>Template CSV</a>
+      </div>
+      <form id="importForm" class="grid-2">
+        <div class="surface card">
+          <h2 class="title-m">1. Source</h2>
+          <label class="dropzone" id="dropzone">
+            <input type="file" name="file" accept=".csv,text/csv,.txt" id="fileInput">
+            <span data-icon="upload" class="dz-icon"></span>
+            <span class="title-s" id="dzText">Drop CSV here or <u>browse</u></span>
+            <span class="body-s muted">Columns: product_id, sku, name, changelog_url, version, previous_version</span>
+          </label>
+          <div class="divider-text">or paste CSV</div>
+          <div class="field textarea">
+            <textarea name="text" rows="6" placeholder=" " id="csvText"></textarea>
+            <label for="csvText">product_id,sku,name,changelog_url</label>
+          </div>
+        </div>
+        <div class="surface card">
+          <h2 class="title-m">2. Duplicate removal</h2>
+          <div class="segmented" role="radiogroup" aria-label="Duplicate removal method">
+            <label><input type="radio" name="dedupe_method" value="regex" checked><span><span data-icon="check" class="seg-check"></span>Regex</span></label>
+            <label><input type="radio" name="dedupe_method" value="ai"><span><span data-icon="check" class="seg-check"></span>AI</span></label>
+            <label><input type="radio" name="dedupe_method" value="none"><span><span data-icon="check" class="seg-check"></span>None</span></label>
+          </div>
+          <p class="body-s muted" id="dedupeHelp">Exact match on ID / SKU and normalised name (case, symbols, “(Lifetime)”, version numbers ignored).</p>
+          <div class="label-l" style="margin-top:16px">Treat as duplicate when matching</div>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" name="k" value="product_id" checked><span><span data-icon="check" class="chip-check"></span>Product ID</span></label>
+            <label class="chip"><input type="checkbox" name="k" value="sku" checked><span><span data-icon="check" class="chip-check"></span>SKU</span></label>
+            <label class="chip"><input type="checkbox" name="k" value="name" checked><span><span data-icon="check" class="chip-check"></span>Name</span></label>
+          </div>
+          <h2 class="title-m" style="margin-top:20px">3. Options</h2>
+          <label class="switch-row"><span>Skip products already in database</span><input type="checkbox" class="switch" name="skip_existing" checked></label>
+          <label class="switch-row"><span>Queue version extraction after import</span><input type="checkbox" class="switch" name="extract_after" checked></label>
+          <button class="btn filled block" type="submit" id="btnImport"><span data-icon="upload"></span>Upload &amp; import</button>
+        </div>
+      </form>
+      <div id="importResult" class="surface card" hidden></div>
+    </section>
+
+
+    <!-- ============ SITEMAP ============ -->
+    <section class="view" data-view="sitemap">
+      <div class="page-head">
+        <div><h1 class="headline">Sitemap extractor</h1><p class="muted body-m">Pull every URL from a sitemap, turn slugs into clean product names, clean them up in bulk, then import as products.</p></div>
+      </div>
+
+      <form id="smForm" class="surface card" novalidate>
+        <div class="sm-head">
+          <h2 class="title-m"><span data-icon="sitemap"></span>1. Extract URLs</h2>
+          <div class="segmented sm-mode" role="radiogroup" aria-label="Source">
+            <label><input type="radio" name="mode" value="url" checked><span><span data-icon="check" class="seg-check"></span><span data-icon="link"></span>Sitemap URL</span></label>
+            <label><input type="radio" name="mode" value="text"><span><span data-icon="check" class="seg-check"></span><span data-icon="article"></span>Paste text</span></label>
+          </div>
+        </div>
+
+        <div class="sm-fetch-row" id="smUrlPane">
+          <div class="field grow">
+            <input id="smUrl" name="url" type="url" placeholder=" " autocomplete="url">
+            <label for="smUrl">Sitemap URL (sitemap.xml, sitemap index, .xml.gz or robots.txt)</label>
+          </div>
+          <button class="btn filled tall" type="submit" id="smFetchBtn"><span data-icon="download"></span>Extract URLs</button>
+        </div>
+
+        <div id="smTextPane" hidden>
+          <div class="field textarea">
+            <textarea id="smText" name="text" rows="8" placeholder=" " spellcheck="false"></textarea>
+            <label for="smText">Paste anything with links — a URL list, HTML, CSV, JSON, e-mail text or sitemap XML</label>
+          </div>
+          <div class="sm-text-bar">
+            <span class="detect-chip" id="smDetect" aria-live="polite">No URLs detected yet</span>
+            <label class="btn text sm file-btn"><span data-icon="upload"></span>Load .txt / .csv / .xml<input type="file" id="smTextFile" accept=".txt,.csv,.xml,.html,.htm,.json,.md,text/*"></label>
+            <button type="button" class="btn text sm" id="smTextClear"><span data-icon="close"></span>Clear</button>
+            <span class="spacer"></span>
+            <label class="switch-row compact"><span>Follow sitemap links (.xml) found in the text</span><input type="checkbox" class="switch" name="follow_sitemaps" checked></label>
+          </div>
+          <button class="btn filled block" type="submit" id="smTextBtn"><span data-icon="download"></span>Extract URLs from text</button>
+        </div>
+        <details class="sm-adv">
+          <summary><span data-icon="tune"></span>Naming &amp; filter options</summary>
+          <div class="grid-3">
+            <div class="field select">
+              <select name="name_from" id="smNameFrom">
+                <option value="last">Last part of URL path</option>
+                <option value="second_last">Second-last part of path</option>
+                <option value="query:slug">Query parameter “slug”</option>
+                <option value="query:product">Query parameter “product”</option>
+              </select>
+              <label for="smNameFrom">Name comes from</label>
+            </div>
+            <div class="field"><input name="remove_words" id="smRemoveWords" placeholder=" "><label for="smRemoveWords">Words to remove (comma separated)</label></div>
+            <div class="field"><input name="max_urls" id="smMax" type="number" min="1" max="200000" value="50000" placeholder=" "><label for="smMax">Max URLs</label></div>
+            <div class="field"><input name="include" id="smInc" placeholder=" "><label for="smInc">Only URLs matching (regex, e.g. /product/)</label></div>
+            <div class="field"><input name="exclude" id="smExc" placeholder=" "><label for="smExc">Skip URLs matching (regex, e.g. /blog/|/tag/)</label></div>
+            <div class="field"><input name="child_filter" id="smChild" placeholder=" "><label for="smChild">Child sitemaps to follow (regex, e.g. product)</label></div>
+          </div>
+          <label class="switch-row"><span>Remove trailing IDs from names (e.g. “-12345”, “-p123”)</span><input type="checkbox" class="switch" name="strip_trailing_id" checked></label>
+          <div class="preview-box">
+            <div class="field grow"><input id="smTestUrl" placeholder=" "><label for="smTestUrl">Try a URL to preview its name</label></div>
+            <div class="preview-out" id="smPreview" aria-live="polite"><span class="muted body-s">Name preview appears here</span></div>
+          </div>
+        </details>
+        <div id="smFetchResult" hidden></div>
+      </form>
+
+      <div class="stat-grid" id="smStats"></div>
+
+      <div class="surface card cleanup">
+        <h2 class="title-m"><span data-icon="clean"></span>2. Quick bulk clean-up <span class="body-s muted" style="font-weight:400">(applies to every matching URL, all pages)</span></h2>
+        <div class="cleanup-grid">
+          <button type="button" class="clean-btn danger" data-quick="delete_number"><span data-icon="delete"></span><div><b>Delete URLs with numbers</b><small id="qNum">—</small></div></button>
+          <button type="button" class="clean-btn danger" data-quick="delete_special"><span data-icon="delete"></span><div><b>Delete URLs with special characters</b><small id="qSpec">—</small></div></button>
+          <button type="button" class="clean-btn" data-quick="strip_numbers"><span data-icon="pin"></span><div><b>Remove numbers from names</b><small>Keeps the URL, cleans the name</small></div></button>
+          <button type="button" class="clean-btn" data-quick="strip_special"><span data-icon="clean"></span><div><b>Remove special characters from names</b><small>&amp; + . ' ( ) etc.</small></div></button>
+        </div>
+      </div>
+
+      <div class="surface card filters sm-filters">
+        <div class="field search">
+          <span data-icon="search" class="leading"></span>
+          <input id="smQ" type="search" placeholder=" " autocomplete="off">
+          <label for="smQ">Search name or URL…</label>
+        </div>
+        <div class="field select"><select id="smFNum"><option value="">Any</option><option value="1">Has numbers</option><option value="0">No numbers</option></select><label for="smFNum">Numbers</label></div>
+        <div class="field select"><select id="smFSpec"><option value="">Any</option><option value="1">Has special chars</option><option value="0">No special chars</option></select><label for="smFSpec">Special characters</label></div>
+        <div class="field select"><select id="smFStatus"><option value="">Any</option><option value="new">New</option><option value="imported">Imported</option><option value="skipped">Skipped (duplicate)</option></select><label for="smFStatus">Status</label></div>
+      </div>
+
+      <div class="action-bar surface card" id="smBar">
+        <div class="sel-group">
+          <button class="btn tonal" id="smSelectAll"><span data-icon="done_all"></span>Select all <span id="smSelAllCount"></span></button>
+          <button class="btn text" id="smClearSel" hidden><span data-icon="close"></span>Clear</button>
+          <span class="sel-text" id="smSelText" aria-live="polite"></span>
+        </div>
+        <div class="act-group">
+          <button class="btn filled" id="smImportBtn"><span data-icon="inventory"></span>Import as products</button>
+          <div class="menu-wrap">
+            <button class="btn filled-tonal-primary" id="smActMenuBtn" aria-haspopup="menu"><span data-icon="edit"></span>Clean names<span data-icon="expand" class="caret"></span></button>
+            <div class="menu" id="smActMenu" role="menu" hidden>
+              <button role="menuitem" data-sm="strip_numbers"><span data-icon="pin"></span><div><b>Remove numbers</b><small>“Photoshop 2026” → “Photoshop”</small></div></button>
+              <button role="menuitem" data-sm="strip_special"><span data-icon="clean"></span><div><b>Remove special characters</b><small>“C++ Builder!” → “C Builder”</small></div></button>
+              <button role="menuitem" data-sm="title_case"><span data-icon="title"></span><div><b>Title Case</b><small>Fix capitalisation &amp; brand names</small></div></button>
+              <button role="menuitem" data-sm="trim_words"><span data-icon="clear_all"></span><div><b>Remove words…</b><small>e.g. download, free, review</small></div></button>
+              <button role="menuitem" data-sm="find_replace"><span data-icon="swap"></span><div><b>Find &amp; replace…</b><small>Text or regex</small></div></button>
+              <button role="menuitem" data-sm="regenerate"><span data-icon="refresh"></span><div><b>Regenerate from URL</b><small>Uses current naming options</small></div></button>
+              <button role="menuitem" data-sm="ai_beautify"><span data-icon="sparkle"></span><div><b>AI beautify names</b><small>OpenAI cleans names (uses credits)</small></div></button>
+              <button role="menuitem" data-sm="reset_status"><span data-icon="history"></span><div><b>Reset status to “new”</b><small>Allow re-importing</small></div></button>
+            </div>
+          </div>
+          <button class="btn outlined" id="smExportSel"><span data-icon="download"></span>Export selected</button>
+          <button class="btn outlined" id="smExportAll"><span data-icon="download"></span>Export all</button>
+          <button class="btn danger-tonal" id="smDelSel"><span data-icon="delete"></span>Delete selected</button>
+        </div>
+      </div>
+
+      <div class="surface card table-card">
+        <table class="data-table" id="smTbl">
+          <thead><tr>
+            <th class="col-check"><input type="checkbox" id="smChkPage" aria-label="Select all on this page"></th>
+            <th data-sort="id">#</th>
+            <th data-sort="name">Product name</th>
+            <th data-sort="url">URL</th>
+            <th>Flags</th>
+            <th data-sort="status">Status</th>
+            <th data-sort="lastmod">Last modified</th>
+            <th class="col-actions">Actions</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="pager">
+          <div class="field select compact"><select id="smLimit"><option>10</option><option selected>25</option><option>50</option><option>100</option><option>250</option></select><label for="smLimit">Rows</label></div>
+          <span class="body-m muted" id="smPageInfo"></span>
+          <div class="pager-btns">
+            <button class="icon-btn" id="smFirst" aria-label="First page" data-icon="first"></button>
+            <button class="icon-btn" id="smPrev" aria-label="Previous page" data-icon="chevron_left"></button>
+            <button class="icon-btn" id="smNext" aria-label="Next page" data-icon="chevron_right"></button>
+            <button class="icon-btn" id="smLast" aria-label="Last page" data-icon="last"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ JOBS ============ -->
+    <section class="view" data-view="jobs">
+      <div class="page-head">
+        <div><h1 class="headline">Jobs &amp; Queue</h1><p class="muted body-m">Order: <b>1. Changelog</b> → <b>2. AI find changelog</b> → <b>3. AI version search</b>.</p></div>
+        <button class="btn filled" id="jobRun"><span data-icon="play"></span>Run worker now</button>
+      </div>
+      <div class="stat-grid" id="jobStats"></div>
+      <div class="action-bar surface card">
+        <div class="sel-group">
+          <div class="field select compact">
+            <select id="jobFilter"><option value="">All</option><option value="pending">Pending</option><option value="running">Running</option><option value="done">Done</option><option value="failed">Failed</option></select>
+            <label for="jobFilter">Status</label>
+          </div>
+        </div>
+        <div class="act-group">
+          <button class="btn outlined" id="jobRetry"><span data-icon="refresh"></span>Retry failed</button>
+          <button class="btn outlined" id="jobClear"><span data-icon="clear_all"></span>Clear done/failed</button>
+          <button class="btn danger-text" id="jobCancel"><span data-icon="close"></span>Cancel pending</button>
+        </div>
+      </div>
+      <div class="surface card table-card">
+        <table class="data-table" id="jobTbl">
+          <thead><tr><th>#</th><th>Product</th><th>Type</th><th>Priority</th><th>Status</th><th>Attempts</th><th>Error</th><th>Updated</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="view" data-view="settings">
+      <div class="page-head">
+        <div><h1 class="headline">Settings</h1><p class="muted body-m">Extraction behaviour, OpenAI and background worker.</p></div>
+      </div>
+      <form id="settingsForm" class="grid-2">
+        <div class="surface card">
+          <h2 class="title-m"><span data-icon="article"></span>Extraction</h2>
+          <div class="label-l">Version source</div>
+          <div class="segmented three" role="radiogroup" aria-label="Version source">
+            <label><input type="radio" name="extraction_mode" value="changelog"><span><span data-icon="check" class="seg-check"></span>Changelog</span></label>
+            <label><input type="radio" name="extraction_mode" value="ai"><span><span data-icon="check" class="seg-check"></span>AI</span></label>
+            <label><input type="radio" name="extraction_mode" value="both"><span><span data-icon="check" class="seg-check"></span>Both</span></label>
+          </div>
+          <p class="body-s muted">“Both” parses every changelog first, then uses AI only for products still missing a version.</p>
+          <label class="switch-row"><span>Use AI to find the changelog URL when missing</span><input type="checkbox" class="switch" name="ai_find_changelog"></label>
+          <div class="field select">
+            <select name="version_pick" id="sPick">
+              <option value="smart">Smart — highest of the first 5 found</option>
+              <option value="first">First version on the page</option>
+              <option value="highest">Highest version on the page</option>
+            </select>
+            <label for="sPick">Version pick rule</label>
+          </div>
+          <div class="field select">
+            <select name="dedupe_method" id="sDedupe"><option value="regex">Regex</option><option value="ai">AI</option><option value="none">None</option></select>
+            <label for="sDedupe">Default duplicate removal</label>
+          </div>
+        </div>
+
+        <div class="surface card">
+          <h2 class="title-m"><span data-icon="sparkle"></span>OpenAI</h2>
+          <div class="field has-trailing">
+            <input name="openai_api_key" id="sKey" type="password" autocomplete="off" placeholder=" ">
+            <label for="sKey">API key</label>
+            <button type="button" class="icon-btn trailing" data-toggle-pass="sKey" aria-label="Show key" data-icon="visibility"></button>
+          </div>
+          <div class="field"><input name="openai_model" id="sModel" placeholder=" "><label for="sModel">Model (must support web search)</label></div>
+          <div class="field select">
+            <select name="openai_search_tool" id="sTool"><option value="web_search">web_search</option><option value="web_search_preview">web_search_preview (legacy)</option></select>
+            <label for="sTool">Web search tool</label>
+          </div>
+          <div class="row-gap">
+            <button type="button" class="btn tonal" id="btnTestAI"><span data-icon="sparkle"></span>Test connection</button>
+            <span id="aiTest" class="body-s"></span>
+          </div>
+        </div>
+
+        <div class="surface card">
+          <h2 class="title-m"><span data-icon="schedule"></span>Background worker</h2>
+          <label class="switch-row"><span>Internal worker enabled</span><input type="checkbox" class="switch" name="worker_enabled"></label>
+          <div class="grid-inner">
+            <div class="field"><input name="worker_interval_sec" id="sInt" type="number" min="5" placeholder=" "><label for="sInt">Interval (sec)</label></div>
+            <div class="field"><input name="batch_size" id="sBatch" type="number" min="1" max="20" placeholder=" "><label for="sBatch">Jobs per batch</label></div>
+            <div class="field"><input name="max_attempts" id="sAtt" type="number" min="1" max="10" placeholder=" "><label for="sAtt">Max attempts</label></div>
+            <div class="field"><input name="request_timeout_ms" id="sTo" type="number" min="2000" placeholder=" "><label for="sTo">HTTP timeout (ms)</label></div>
+          </div>
+          <div class="field"><input name="user_agent" id="sUa" placeholder=" "><label for="sUa">User-Agent</label></div>
+        </div>
+
+        <div class="surface card" id="dbInfo">
+          <h2 class="title-m"><span data-icon="storage"></span>Database</h2>
+          <p class="muted">Loading…</p>
+        </div>
+
+        <div class="save-bar">
+          <button class="btn filled" type="submit"><span data-icon="check"></span>Save settings</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <button class="fab-top" id="toTop" aria-label="Back to top" title="Back to top" data-icon="arrow_up"></button>
+</div>
+
+<!-- ===================== DIALOGS (in-page, replaces alert/confirm/prompt) ===================== -->
+<dialog id="dlgProduct" class="m3-dialog wide">
+  <form id="prodForm" method="dialog">
+    <h2 class="headline-s" id="dlgTitle">Add product</h2>
+    <input type="hidden" name="id">
+    <div class="grid-inner">
+      <div class="field"><input name="product_id" id="fPid" placeholder=" "><label for="fPid">Product ID</label></div>
+      <div class="field"><input name="sku" id="fSku" placeholder=" "><label for="fSku">SKU</label></div>
+    </div>
+    <div class="field"><input name="name" id="fName" placeholder=" " required><label for="fName">Name *</label></div>
+    <div class="field"><input name="product_url" id="fPUrl" type="url" placeholder=" "><label for="fPUrl">Product page URL</label></div>
+    <div class="field"><input name="changelog_url" id="fUrl" type="url" placeholder=" "><label for="fUrl">Changelog URL</label></div>
+    <div class="grid-inner">
+      <div class="field"><input name="version" id="fVer" placeholder=" "><label for="fVer">Version</label></div>
+      <div class="field"><input name="previous_version" id="fPrev" placeholder=" "><label for="fPrev">Previous version</label></div>
+    </div>
+    <label class="switch-row"><span>Queue version extraction after saving</span><input type="checkbox" class="switch" name="extract"></label>
+    <div class="dialog-actions">
+      <button type="button" class="btn text" data-close>Cancel</button>
+      <button type="submit" class="btn filled">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgConfirm" class="m3-dialog">
+  <form method="dialog" id="confirmForm">
+    <div class="dialog-icon" id="cfIcon"></div>
+    <h2 class="headline-s" id="cfTitle"></h2>
+    <p class="body-m muted" id="cfMsg"></p>
+    <div class="field" id="cfFieldWrap" hidden><input id="cfInput" placeholder=" " autocomplete="off"><label for="cfInput" id="cfLabel"></label></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn text" data-close>Cancel</button>
+      <button type="submit" class="btn filled" id="cfOk">OK</button>
+    </div>
+  </form>
+</dialog>
+
+
+<dialog id="dlgPrompt" class="m3-dialog">
+  <form method="dialog" id="promptForm">
+    <h2 class="headline-s" id="pmTitle"></h2>
+    <p class="body-m muted" id="pmMsg"></p>
+    <div class="field"><input id="pmInput" placeholder=" " autocomplete="off"><label for="pmInput" id="pmLabel"></label></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn text" data-close>Cancel</button>
+      <button type="submit" class="btn filled" id="pmOk">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgReplace" class="m3-dialog">
+  <form method="dialog" id="replaceForm">
+    <h2 class="headline-s">Find &amp; replace in names</h2>
+    <p class="body-m muted" id="rpScope"></p>
+    <div class="field"><input id="rpFind" placeholder=" " autocomplete="off"><label for="rpFind">Find</label></div>
+    <div class="field"><input id="rpReplace" placeholder=" " autocomplete="off"><label for="rpReplace">Replace with (empty = remove)</label></div>
+    <label class="switch-row"><span>Use regular expression</span><input type="checkbox" class="switch" id="rpRegex"></label>
+    <div class="dialog-actions">
+      <button type="button" class="btn text" data-close>Cancel</button>
+      <button type="submit" class="btn filled">Replace</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgSmImport" class="m3-dialog">
+  <form method="dialog" id="smImportForm">
+    <div class="dialog-icon"><span data-icon="inventory"></span></div>
+    <h2 class="headline-s">Import as products</h2>
+    <p class="body-m muted" id="siScope"></p>
+    <label class="switch-row"><span>Skip duplicates (same name already a product)</span><input type="checkbox" class="switch" name="skip_duplicates" checked></label>
+    <div class="segmented" role="radiogroup" aria-label="Duplicate method">
+      <label><input type="radio" name="dedupe_method" value="regex" checked><span><span data-icon="check" class="seg-check"></span>Regex</span></label>
+      <label><input type="radio" name="dedupe_method" value="ai"><span><span data-icon="check" class="seg-check"></span>AI</span></label>
+    </div>
+    <label class="switch-row"><span>Queue version extraction after import</span><input type="checkbox" class="switch" name="extract_after" checked></label>
+    <p class="body-s muted">Products are created with their page URL. With “AI find changelog” on, the worker finds each changelog and then the latest &amp; previous version.</p>
+    <div class="dialog-actions">
+      <button type="button" class="btn text" data-close>Cancel</button>
+      <button type="submit" class="btn filled">Import</button>
+    </div>
+  </form>
+</dialog>
+
+
+<dialog id="dlgExport" class="m3-dialog wide">
+  <form method="dialog" id="exportForm">
+    <div class="dialog-icon"><span data-icon="download"></span></div>
+    <h2 class="headline-s">Export products to CSV</h2>
+    <div class="label-l">Which products</div>
+    <div class="scope-list" id="exScope">
+      <label class="scope-opt"><input type="radio" name="scope" value="selected"><span><b>Selected products</b><small id="exSelN"></small></span></label>
+      <label class="scope-opt"><input type="radio" name="scope" value="filtered"><span><b>All matching current filters</b><small id="exFiltN"></small></span></label>
+      <label class="scope-opt"><input type="radio" name="scope" value="today"><span><b>Version updated today</b><small id="exTodayN"></small></span></label>
+      <label class="scope-opt"><input type="radio" name="scope" value="range"><span><b>Version updated in a date range</b><small>Pick dates below</small></span></label>
+    </div>
+    <div class="grid-inner" id="exRange" hidden>
+      <div class="field"><input type="date" id="exFrom" placeholder=" "><label for="exFrom">From</label></div>
+      <div class="field"><input type="date" id="exTo" placeholder=" "><label for="exTo">To</label></div>
+    </div>
+    <div class="label-l" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <span>Columns</span>
+      <span class="preset-row">
+        <button type="button" class="btn sm tonal" data-preset="version"><span data-icon="history"></span>Version only</button>
+        <button type="button" class="btn sm text" data-preset="all">All</button>
+        <button type="button" class="btn sm text" data-preset="none">None</button>
+      </span>
+    </div>
+    <div class="chips" id="exCols"></div>
+    <p class="body-s muted" id="exHint"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn text" data-close>Cancel</button>
+      <button type="submit" class="btn filled" id="exGo"><span data-icon="download"></span>Download CSV</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>
